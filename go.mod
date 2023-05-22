@@ -18,6 +18,7 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20230407062729-974c6f05fe16
 	github.com/jpillora/backoff v1.0.0
 	github.com/klauspost/cpuid/v2 v2.0.12
+	github.com/lafikl/consistent v0.0.0-20220512074542-bdd3606bfc3e
 	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40
 	github.com/mdlayher/netlink v1.7.2
 	github.com/metacubex/quic-go v0.33.3-0.20230510010206-687b537b6a58
@@ -78,6 +79,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/metacubex/gvisor v0.0.0-20230417114019-3c3ee672d60c // indirect
+	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1 // indirect
 	github.com/oasisprotocol/deoxysii v0.0.0-20220228165953-2091330c22b7 // indirect
 	github.com/onsi/ginkgo/v2 v2.2.0 // indirect
 	github.com/oschwald/maxminddb-golang v1.10.0 // indirect

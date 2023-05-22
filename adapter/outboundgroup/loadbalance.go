@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/lafikl/consistent"
+	"hash/crc32"
 	"net"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -182,6 +186,75 @@ func strategyConsistentHashing() strategyFn {
 	}
 }
 
+type consistentHashingBounded struct {
+	replicas    int
+	keys        []int // Sorted
+	hashMap     map[int]string
+	hashRing    *consistent.Consistent
+	proxies     []C.Proxy
+	nameToProxy map[string]C.Proxy
+}
+
+func newConsistentHashingBounded() *consistentHashingBounded {
+	return &consistentHashingBounded{
+		replicas:    20,
+		hashMap:     make(map[int]string),
+		hashRing:    consistent.New(),
+		nameToProxy: make(map[string]C.Proxy),
+	}
+}
+
+func (c *consistentHashingBounded) Add(proxies []C.Proxy) {
+	c.proxies = proxies
+
+	for _, proxy := range proxies {
+		c.nameToProxy[proxy.Name()] = proxy
+		for i := 0; i < c.replicas; i++ {
+			key := int(crc32.ChecksumIEEE([]byte(fmt.Sprintf("%s:%d", proxy.Name(), i))))
+			c.keys = append(c.keys, key)
+			c.hashMap[key] = proxy.Name()
+			c.hashRing.Add(proxy.Name())
+		}
+	}
+	sort.Ints(c.keys)
+}
+
+func (c *consistentHashingBounded) Get(key string) C.Proxy {
+	maxRetry := 5
+	if len(c.keys) == 0 {
+		return c.proxies[0]
+	}
+	for i := 0; i < maxRetry; i++ {
+		hash := int(crc32.ChecksumIEEE([]byte(key)))
+		idx := sort.Search(len(c.keys), func(i int) bool { return c.keys[i] >= hash })
+		for j := 0; j < len(c.keys); j++ {
+			idx = (idx + j) % len(c.keys)
+			proxyString, _ := c.hashRing.Get(strconv.Itoa(idx))
+			if proxy, ok := c.hashMap[int(crc32.ChecksumIEEE([]byte(proxyString)))]; ok {
+				if proxy, ok := c.nameToProxy[proxy]; ok {
+					if proxy.Alive() {
+						return proxy
+					}
+				}
+			}
+		}
+	}
+	for _, proxy := range c.proxies {
+		if proxy.Alive() {
+			return proxy
+		}
+	}
+	return c.proxies[0]
+}
+
+func strategyConsistentHashingBounded() strategyFn {
+	consHash := newConsistentHashingBounded()
+	return func(proxies []C.Proxy, metadata *C.Metadata, touch bool) C.Proxy {
+		consHash.Add(proxies)
+		return consHash.Get(getKey(metadata))
+	}
+}
+
 func strategyStickySessions() strategyFn {
 	ttl := time.Minute * 10
 	maxRetry := 5
@@ -244,6 +317,8 @@ func NewLoadBalance(option *GroupCommonOption, providers []provider.ProxyProvide
 		strategyFn = strategyRoundRobin()
 	case "sticky-sessions":
 		strategyFn = strategyStickySessions()
+	case "consistent-bounded":
+		strategyFn = strategyConsistentHashingBounded()
 	default:
 		return nil, fmt.Errorf("%w: %s", errStrategy, strategy)
 	}
